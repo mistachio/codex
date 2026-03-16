@@ -1,6 +1,7 @@
 use codex_protocol::protocol::SessionSource;
 use http::HeaderMap;
 use http::HeaderValue;
+use serde_json::json;
 
 pub fn build_session_headers(session_id: Option<String>, thread_id: Option<String>) -> HeaderMap {
     let mut headers = HeaderMap::new();
@@ -9,6 +10,16 @@ pub fn build_session_headers(session_id: Option<String>, thread_id: Option<Strin
     }
     if let Some(id) = thread_id {
         insert_header(&mut headers, "thread-id", &id);
+    }
+    headers
+}
+
+pub fn build_conversation_headers(wire_session_id: Option<String>) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    if let Some(id) = wire_session_id {
+        insert_header(&mut headers, "session_id", &id);
+        let extra_value = json!({ "session_id": id }).to_string();
+        insert_header(&mut headers, "extra", &extra_value);
     }
     headers
 }

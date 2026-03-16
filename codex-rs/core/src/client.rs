@@ -58,6 +58,7 @@ use codex_api::SseTelemetry;
 use codex_api::TransportError;
 use codex_api::WebsocketTelemetry;
 use codex_api::auth_header_telemetry;
+use codex_api::build_conversation_headers;
 use codex_api::build_session_headers;
 use codex_api::create_text_param_for_request;
 use codex_api::response_create_client_metadata;
@@ -170,6 +171,7 @@ struct ModelClientState {
     thread_id: ThreadId,
     window_generation: AtomicU64,
     installation_id: String,
+    wire_session_id: ThreadId,
     provider: SharedModelProvider,
     auth_env_telemetry: AuthEnvTelemetry,
     session_source: SessionSource,
@@ -317,6 +319,7 @@ impl ModelClient {
         auth_manager: Option<Arc<AuthManager>>,
         session_id: SessionId,
         thread_id: ThreadId,
+        wire_session_id: ThreadId,
         installation_id: String,
         provider_info: ModelProviderInfo,
         session_source: SessionSource,
@@ -340,6 +343,7 @@ impl ModelClient {
                 thread_id,
                 window_generation: AtomicU64::new(0),
                 installation_id,
+                wire_session_id,
                 provider: model_provider,
                 auth_env_telemetry,
                 session_source,
@@ -503,6 +507,9 @@ impl ModelClient {
             Some(self.state.session_id.to_string()),
             Some(self.state.thread_id.to_string()),
         ));
+        extra_headers.extend(build_conversation_headers(Some(
+            self.state.wire_session_id.to_string(),
+        )));
         if let Some(header_value) = self.generate_attestation_header_for().await {
             extra_headers.insert(X_OAI_ATTESTATION_HEADER, header_value);
         }
@@ -911,6 +918,9 @@ impl ModelClient {
             headers.insert("x-client-request-id", header_value);
         }
         headers.extend(build_session_headers(Some(session_id), Some(thread_id)));
+        headers.extend(build_conversation_headers(Some(
+            self.state.wire_session_id.to_string(),
+        )));
         headers.extend(self.build_responses_identity_headers());
         if let Some(header_value) = self.generate_attestation_header_for().await {
             headers.insert(X_OAI_ATTESTATION_HEADER, header_value);

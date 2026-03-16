@@ -2150,6 +2150,7 @@ async fn websocket_harness_with_provider_options(
         /*auth_manager*/ None,
         session_id,
         thread_id,
+        thread_id,
         /*installation_id*/ TEST_INSTALLATION_ID.to_string(),
         provider.clone(),
         SessionSource::Exec,

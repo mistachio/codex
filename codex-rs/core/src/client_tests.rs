@@ -67,6 +67,7 @@ fn test_model_client(session_source: SessionSource) -> ModelClient {
         /*auth_manager*/ None,
         thread_id.into(),
         thread_id,
+        thread_id,
         /*installation_id*/ "11111111-1111-4111-8111-111111111111".to_string(),
         provider,
         session_source,
@@ -516,6 +517,7 @@ fn model_client_with_counting_attestation(
     let model_client = ModelClient::new(
         auth_manager,
         SessionId::new(),
+        ThreadId::new(),
         ThreadId::new(),
         /*installation_id*/ "11111111-1111-4111-8111-111111111111".to_string(),
         provider,
