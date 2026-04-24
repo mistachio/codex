@@ -43,6 +43,7 @@ use supports_color::Stream;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod app_cmd;
+mod debug_bootstrap_internal_profile;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod desktop_app;
 mod doctor;
@@ -54,6 +55,9 @@ mod state_db_recovery;
 #[cfg(not(windows))]
 mod wsl_paths;
 
+use crate::debug_bootstrap_internal_profile::DebugBootstrapInternalProfileCommand;
+use crate::debug_bootstrap_internal_profile::run_debug_bootstrap_internal_profile_command;
+use crate::marketplace_cmd::MarketplaceCli;
 use crate::mcp_cmd::McpCli;
 use crate::plugin_cmd::PluginCli;
 use crate::plugin_cmd::PluginSubcommand;
@@ -222,6 +226,10 @@ enum DebugSubcommand {
     /// Replay a rollout trace bundle and write reduced state JSON.
     #[clap(hide = true)]
     TraceReduce(DebugTraceReduceCommand),
+
+    /// Internal: bootstrap the internal profile used by the installer.
+    #[clap(hide = true, name = "bootstrap-internal-profile")]
+    BootstrapInternalProfile(DebugBootstrapInternalProfileCommand),
 
     /// Internal: reset local memory state for a fresh start.
     #[clap(hide = true)]
@@ -1320,6 +1328,14 @@ async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {
                     "debug trace-reduce",
                 )?;
                 run_debug_trace_reduce_command(cmd).await?;
+            }
+            DebugSubcommand::BootstrapInternalProfile(cmd) => {
+                reject_remote_mode_for_subcommand(
+                    root_remote.as_deref(),
+                    root_remote_auth_token_env.as_deref(),
+                    "debug bootstrap-internal-profile",
+                )?;
+                run_debug_bootstrap_internal_profile_command(cmd)?;
             }
             DebugSubcommand::ClearMemories => {
                 reject_remote_mode_for_subcommand(
@@ -3347,6 +3363,30 @@ mod tests {
             panic!("expected features disable");
         };
         assert_eq!(feature, "shell_tool");
+    }
+
+    #[test]
+    fn debug_bootstrap_internal_profile_parses_stdin_flag() {
+        let cli = MultitoolCli::try_parse_from([
+            "codex",
+            "debug",
+            "bootstrap-internal-profile",
+            "--ak-stdin",
+            "--azure-base-url",
+            "https://internal.example.test/openapi",
+            "--model",
+            "gpt-5.4",
+        ])
+        .expect("parse should succeed");
+        let Some(Subcommand::Debug(DebugCommand { subcommand })) = cli.subcommand else {
+            panic!("expected debug subcommand");
+        };
+        let DebugSubcommand::BootstrapInternalProfile(cmd) = subcommand else {
+            panic!("expected bootstrap-internal-profile");
+        };
+        assert!(cmd.ak_stdin);
+        assert_eq!(cmd.azure_base_url, "https://internal.example.test/openapi");
+        assert_eq!(cmd.model.as_deref(), Some("gpt-5.4"));
     }
 
     #[test]

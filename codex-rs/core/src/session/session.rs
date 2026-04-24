@@ -86,6 +86,7 @@ pub(crate) struct SessionConfiguration {
     pub(super) thread_name: Option<String>,
     /// Sticky environments for turns that do not provide a turn-local override.
     pub(super) environments: Vec<TurnEnvironmentSelection>,
+    pub(super) wire_session_id: Option<ThreadId>,
 
     // TODO(pakrym): Remove config from here
     pub(super) original_config_do_not_use: Arc<Config>,
@@ -518,6 +519,10 @@ impl Session {
             }
             InitialHistory::Resumed(resumed_history) => resumed_history.conversation_id,
         };
+        let wire_session_id = session_configuration
+            .wire_session_id
+            .unwrap_or(conversation_id);
+        session_configuration.wire_session_id = Some(wire_session_id);
         let window_generation = match &initial_history {
             InitialHistory::Resumed(resumed_history) => u64::try_from(
                 resumed_history
@@ -1231,5 +1236,13 @@ impl Session {
                 Err(err)
             }
         }
+    }
+
+    pub(crate) async fn wire_session_id(&self) -> ThreadId {
+        let state = self.state.lock().await;
+        state
+            .session_configuration
+            .wire_session_id
+            .unwrap_or(self.conversation_id)
     }
 }

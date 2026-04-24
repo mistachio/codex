@@ -1,5 +1,6 @@
 param(
-    [string]$Release = "latest"
+    [Parameter(Position=0)]
+    [string]$Version = "latest"
 )
 
 Set-StrictMode -Version Latest
@@ -12,27 +13,6 @@ function Write-Step {
     )
 
     Write-Host "==> $Message"
-}
-
-function Write-WarningStep {
-    param(
-        [string]$Message
-    )
-
-    Write-Warning $Message
-}
-
-function Prompt-YesNo {
-    param(
-        [string]$Prompt
-    )
-
-    if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) {
-        return $false
-    }
-
-    $choice = Read-Host "$Prompt [y/N]"
-    return $choice -match "^(?i:y(?:es)?)$"
 }
 
 function Normalize-Version {
@@ -141,51 +121,13 @@ function Path-Contains {
     return $false
 }
 
-function Invoke-WithInstallLock {
-    param(
-        [string]$LockPath,
-        [scriptblock]$Script
-    )
-
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LockPath) | Out-Null
-    $lock = $null
-    while ($null -eq $lock) {
-        try {
-            $lock = [System.IO.File]::Open(
-                $LockPath,
-                [System.IO.FileMode]::OpenOrCreate,
-                [System.IO.FileAccess]::ReadWrite,
-                [System.IO.FileShare]::None
-            )
-        } catch [System.IO.IOException] {
-            Start-Sleep -Milliseconds 250
-        }
-    }
-    try {
-        & $Script
-    } finally {
-        $lock.Dispose()
-    }
-}
-
-function Remove-StaleInstallArtifacts {
-    param(
-        [string]$ReleasesDir
-    )
-
-    if (Test-Path -LiteralPath $ReleasesDir -PathType Container) {
-        Get-ChildItem -LiteralPath $ReleasesDir -Force -Directory -Filter ".staging.*" -ErrorAction SilentlyContinue |
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
 function Resolve-Version {
-    $normalizedVersion = Normalize-Version -RawVersion $Release
+    $normalizedVersion = Normalize-Version -RawVersion $Version
     if ($normalizedVersion -ne "latest") {
         return $normalizedVersion
     }
 
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/openai/codex/releases/latest"
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/SDGLBL/codex/releases/latest"
     if (-not $release.tag_name) {
         Write-Error "Failed to resolve the latest Codex release version."
         exit 1
@@ -688,36 +630,21 @@ switch ($architecture) {
     }
 }
 
-$codexHome = if ([string]::IsNullOrWhiteSpace($env:CODEX_HOME)) {
-    Join-Path $env:USERPROFILE ".codex"
-} else {
-    $env:CODEX_HOME
-}
-$standaloneRoot = Join-Path $codexHome "packages\standalone"
-$releasesDir = Join-Path $standaloneRoot "releases"
-$currentDir = Join-Path $standaloneRoot "current"
-$lockPath = Join-Path $standaloneRoot "install.lock"
-
-$defaultVisibleBinDir = Join-Path $env:LOCALAPPDATA "Programs\OpenAI\Codex\bin"
 if ([string]::IsNullOrWhiteSpace($env:CODEX_INSTALL_DIR)) {
-    $visibleBinDir = $defaultVisibleBinDir
+    $installDir = Join-Path $env:LOCALAPPDATA "Programs\OpenAI\Codex\bin"
 } else {
-    $visibleBinDir = $env:CODEX_INSTALL_DIR
+    $installDir = $env:CODEX_INSTALL_DIR
 }
 
-$currentVersion = Get-CurrentInstalledVersion -StandaloneCurrentDir $currentDir
-$resolvedVersion = Resolve-Version
-$releaseName = "$resolvedVersion-$target"
-$releaseDir = Join-Path $releasesDir $releaseName
+$codexPath = Join-Path $installDir "codex.exe"
+$installMode = if (Test-Path $codexPath) { "Updating" } else { "Installing" }
 
-if (-not [string]::IsNullOrWhiteSpace($currentVersion) -and $currentVersion -ne $resolvedVersion) {
-    Write-Step "Updating Codex CLI from $currentVersion to $resolvedVersion"
-} elseif (-not [string]::IsNullOrWhiteSpace($currentVersion)) {
-    Write-Step "Updating Codex CLI"
-} else {
-    Write-Step "Installing Codex CLI"
-}
+Write-Step "$installMode Codex CLI"
 Write-Step "Detected platform: $platformLabel"
+
+New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+
+$resolvedVersion = Resolve-Version
 Write-Step "Resolved version: $resolvedVersion"
 
 $conflictingInstall = Get-ConflictingInstall -VisibleBinDir $visibleBinDir
@@ -742,8 +669,9 @@ $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-install-" + [Syst
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
 try {
-    Invoke-WithInstallLock -LockPath $lockPath -Script {
-        Remove-StaleInstallArtifacts -ReleasesDir $releasesDir
+    $archivePath = Join-Path $tempDir $packageAsset
+    $extractDir = Join-Path $tempDir "extract"
+    $url = Get-ReleaseUrl -AssetName $packageAsset -ResolvedVersion $resolvedVersion
 
         if (-not (Test-ReleaseIsComplete -ReleaseDir $releaseDir -ExpectedVersion $resolvedVersion -ExpectedTarget $target -Layout $installLayout)) {
             if (Test-Path -LiteralPath $releaseDir) {
@@ -836,38 +764,37 @@ try {
     Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
 }
 
-Maybe-HandleConflictingInstall -Conflict $conflictingInstall
-
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if (-not (Path-Contains -PathValue $userPath -Entry $visibleBinDir)) {
+$pathNeedsNewShell = $false
+if (-not (Path-Contains -PathValue $userPath -Entry $installDir)) {
     if ([string]::IsNullOrWhiteSpace($userPath)) {
-        $newUserPath = $visibleBinDir
+        $newUserPath = $installDir
     } else {
-        $newUserPath = "$visibleBinDir;$userPath"
+        $newUserPath = "$installDir;$userPath"
     }
 
     [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+    if (-not (Path-Contains -PathValue $env:Path -Entry $installDir)) {
+        if ([string]::IsNullOrWhiteSpace($env:Path)) {
+            $env:Path = $installDir
+        } else {
+            $env:Path = "$installDir;$env:Path"
+        }
+    }
     Write-Step "PATH updated for future PowerShell sessions."
-} elseif (Path-Contains -PathValue $env:Path -Entry $visibleBinDir) {
-    Write-Step "$visibleBinDir is already on PATH."
+    $pathNeedsNewShell = $true
+} elseif (Path-Contains -PathValue $env:Path -Entry $installDir) {
+    Write-Step "$installDir is already on PATH."
 } else {
     Write-Step "PATH is already configured for future PowerShell sessions."
+    $pathNeedsNewShell = $true
 }
 
-if (-not (Path-Contains -PathValue $env:Path -Entry $visibleBinDir)) {
-    if ([string]::IsNullOrWhiteSpace($env:Path)) {
-        $env:Path = $visibleBinDir
-    } else {
-        $env:Path = "$visibleBinDir;$env:Path"
-    }
+if ($pathNeedsNewShell) {
+    Write-Step ('Run now: $env:Path = "{0};$env:Path"; codex' -f $installDir)
+    Write-Step "Or open a new PowerShell window and run: codex"
+} else {
+    Write-Step "Run: codex"
 }
 
-Write-Step "Current PowerShell session: codex"
-Write-Step "Future PowerShell windows: open a new PowerShell window and run: codex"
 Write-Host "Codex CLI $resolvedVersion installed successfully."
-
-$codexCommand = Join-Path $visibleBinDir "codex.exe"
-if (Prompt-YesNo "Start Codex now?") {
-    Write-Step "Launching Codex"
-    & $codexCommand
-}
