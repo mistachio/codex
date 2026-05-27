@@ -521,7 +521,7 @@ impl Session {
         };
         let wire_session_id = session_configuration
             .wire_session_id
-            .unwrap_or(conversation_id);
+            .unwrap_or(thread_id);
         session_configuration.wire_session_id = Some(wire_session_id);
         let window_generation = match &initial_history {
             InitialHistory::Resumed(resumed_history) => u64::try_from(
@@ -1025,10 +1025,12 @@ impl Session {
                     Some(Arc::clone(&auth_manager)),
                     session_id,
                     thread_id,
+                    wire_session_id,
                     installation_id.clone(),
                     session_configuration.provider.clone(),
                     session_configuration.session_source.clone(),
                     config.model_verbosity,
+                    config.model_max_output_tokens,
                     config.features.enabled(Feature::EnableRequestCompression),
                     config.features.enabled(Feature::RuntimeMetrics),
                     Self::build_model_client_beta_features_header(config.as_ref()),

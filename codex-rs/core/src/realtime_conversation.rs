@@ -709,7 +709,7 @@ pub(crate) async fn build_realtime_session_config(
         RealtimeWsMode::Conversational => RealtimeSessionMode::Conversational,
         RealtimeWsMode::Transcription => RealtimeSessionMode::Transcription,
     };
-    let requested_session_id = match session_id {
+    let requested_session_id = match realtime_session_id {
         Some(session_id) => session_id,
         None => sess.wire_session_id().await.to_string(),
     };

@@ -7,7 +7,6 @@ use crate::session::turn_context::TurnContext;
 use crate::state::TaskKind;
 use codex_protocol::user_input::UserInput;
 use tokio_util::sync::CancellationToken;
-use tracing::warn;
 
 #[derive(Clone, Copy, Default)]
 pub(crate) struct CompactTask;

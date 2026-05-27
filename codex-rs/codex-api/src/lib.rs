@@ -12,6 +12,7 @@ pub(crate) mod search;
 pub(crate) mod sse;
 pub(crate) mod telemetry;
 
+pub use crate::requests::headers::build_conversation_headers;
 pub use crate::requests::headers::build_session_headers;
 pub use codex_client::RequestTelemetry;
 pub use codex_client::ReqwestTransport;

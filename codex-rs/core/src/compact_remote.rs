@@ -117,6 +117,7 @@ pub(crate) async fn try_run_remote_compact_task(
         started_at: turn_context.turn_timing_state.started_at_unix_secs().await,
         model_context_window: turn_context.model_context_window(),
         collaboration_mode_kind: turn_context.collaboration_mode.mode,
+        trace_id: None,
     });
     sess.send_event(&turn_context, start_event).await;
 
